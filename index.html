@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Три кота: Хоккей</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #111; color: #333; }
+        
+        #game-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: #fff; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+        
+        /* Полноэкранный холст с сохранением пропорций */
+        canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; background: #cce7ff; }
+        
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.95); z-index: 10; transition: opacity 0.3s; }
+        .hidden { display: none !important; }
+        
+        .top-bar { position: absolute; top: 20px; left: 20px; right: 20px; display: flex; justify-content: space-between; font-size: 24px; font-weight: bold; z-index: 5; color: #333; }
+        .score-board { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); font-size: 48px; font-weight: bold; color: #d32f2f; z-index: 5; text-shadow: 2px 2px 0 #fff; }
+        
+        h1 { color: #f57c00; margin-bottom: 20px; font-size: 3em; text-align: center; }
+        .btn { padding: 12px 25px; margin: 5px; font-size: 18px; cursor: pointer; border: none; border-radius: 8px; background: #ff9800; color: white; font-weight: bold; transition: 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .btn:hover { background: #f57c00; transform: translateY(-2px); box-shadow: 0 6px 10px rgba(0,0,0,0.2); }
+        .btn-red { background: #f44336; }
+        .btn-red:hover { background: #d32f2f; }
+        
+        .char-select { display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; justify-content: center; }
+        .char-card { border: 4px solid transparent; padding: 15px; border-radius: 15px; cursor: pointer; text-align: center; transition: 0.2s; background: #f9f9f9; }
+        .char-card.active { border-color: #ff9800; background: #fff3e0; transform: scale(1.05); }
+        .char-card img { width: 100px; height: 100px; object-fit: cover; border-radius: 50%; border: 2px solid #ddd; }
+        
+        .modal-box { background: white; padding: 30px; border-radius: 15px; min-width: 320px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); text-align: center; }
+        .modal-box h2 { margin-top: 0; color: #333; }
+        .modal-box input { display: block; width: 90%; margin: 10px auto; padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 8px; }
+        
+        .leaderboard-list { text-align: left; max-height: 300px; overflow-y: auto; padding-left: 20px; font-size: 18px; margin-bottom: 20px; }
+        .leaderboard-list li { margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        
+        #user-info { margin-bottom: 20px; font-size: 18px; background: #e3f2fd; padding: 15px; border-radius: 10px; width: 80%; max-width: 500px; text-align: center; border: 2px solid #2196F3; }
+    </style>
+</head>
+<body>
+
+    <div style="display: none;">
+        <img id="img-kompot" src="kompot.png">
+        <img id="img-karamelka" src="karamelka.png">
+        <img id="img-korzhik" src="korzhik.png">
+        <img id="img-puck" src="puck.png">
+    </div>
+
+    <div id="game-container">
+        <div class="top-bar hidden" id="game-hud">
+            <div>ELO: <span id="hud-elo">200</span></div>
+            <div><span id="hud-mode">Бот</span></div>
+            <div>Монеты: <span id="hud-coins">0</span></div>
+        </div>
+        <div class="score-board hidden" id="game-score">0 - 0</div>
+
+        <div class="ui-layer" id="auth-screen">
+            <div class="modal-box">
+                <h1>Авторизация</h1>
+                <input type="email" id="email-input" placeholder="Email (например: test@test.com)">
+                <input type="password" id="password-input" placeholder="Пароль (минимум 6 символов)">
+                <div id="auth-error" style="color: red; margin-bottom: 10px; font-size: 14px;"></div>
+                <button class="btn" id="btn-login">Войти</button>
+                <button class="btn" id="btn-register" style="background:#2196F3;">Регистрация</button>
+            </div>
+        </div>
+
+        <div class="ui-layer hidden" id="main-menu">
+            <h1>Три кота: Хоккей</h1>
+            
+            <div id="user-info">
+                <div>Аккаунт: <strong id="menu-email">...</strong></div>
+                <div>ELO: <strong id="menu-elo">200</strong> | Монеты: <strong id="menu-coins">0</strong></div>
+                <button class="btn btn-red" id="btn-logout" style="margin-top: 10px; font-size: 14px; padding: 5px 15px;">Выйти</button>
+            </div>
+            
+            <h3>Выберите персонажа:</h3>
+            <div class="char-select">
+                <div class="char-card active" id="card-kompot" data-char="kompot">
+                    <img src="kompot.png" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'100\'><circle cx=\'50\' cy=\'50\' r=\'50\' fill=\'blue\'/></svg>'">
+                    <div>Компот</div>
+                </div>
+                <div class="char-card" id="card-karamelka" data-char="karamelka">
+                    <img src="karamelka.png" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'100\'><circle cx=\'50\' cy=\'50\' r=\'50\' fill=\'red\'/></svg>'">
+                    <div>Карамелька</div>
+                </div>
+                <div class="char-card" id="card-korzhik" data-char="korzhik">
+                    <img src="korzhik.png" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'100\' height=\'100\'><circle cx=\'50\' cy=\'50\' r=\'50\' fill=\'orange\'/></svg>'">
+                    <div>Коржик</div>
+                </div>
+            </div>
+
+            <div>
+                <button class="btn" id="btn-play-bot">Играть с Ботом</button>
+                <button class="btn" id="btn-play-online" style="background:#9C27B0;">Найти игру (Онлайн)</button>
+                <button class="btn" id="btn-leaderboard" style="background:#4CAF50;">Лидерборд</button>
+            </div>
+        </div>
+
+        <div class="ui-layer hidden" id="matchmaking-screen">
+            <div class="modal-box">
+                <h2>Поиск противника...</h2>
+                <div class="loader" style="margin: 20px auto; border: 5px solid #f3f3f3; border-top: 5px solid #ff9800; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;"></div>
+                <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+                <button class="btn btn-red" id="btn-cancel-search">Отмена</button>
+            </div>
+        </div>
+
+        <div class="ui-layer hidden" id="game-over">
+            <div class="modal-box">
+                <h1 id="result-title">Победа!</h1>
+                <h3 id="result-elo-change">ELO +30</h3>
+                <h3 id="result-coins">Монеты +10</h3>
+                <button class="btn" id="btn-to-menu">В меню</button>
+            </div>
+        </div>
+
+        <div class="ui-layer hidden" id="leaderboard-screen">
+            <div class="modal-box">
+                <h2>Глобальный Топ ELO</h2>
+                <ol class="leaderboard-list" id="leaderboard-list">
+                    <li>Загрузка...</li>
+                </ol>
+                <button class="btn" id="btn-close-lb">Закрыть</button>
+            </div>
+        </div>
+
+        <canvas id="gameCanvas" width="1000" height="600"></canvas>
+    </div>
+
+    <script type="module">
+        // --- 1. ИНИЦИАЛИЗАЦИЯ FIREBASE ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+        import { getDatabase, ref, set, get, onValue, update, remove, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAGVE2mEVRGo38x7LNNB-Bqqk6m5Y3niec",
+            authDomain: "hokey3kota.firebaseapp.com",
+            projectId: "hokey3kota",
+            storageBucket: "hokey3kota.firebasestorage.app",
+            messagingSenderId: "749132745521",
+            appId: "1:749132745521:web:09a66b326a024b72e8fe10",
+            measurementId: "G-6851T7Q7HB"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getDatabase(app);
+
+        // --- 2. ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ И СОСТОЯНИЕ ---
+        let currentUser = null;
+        let playerData = { elo: 200, coins: 0, character: 'kompot' };
+        
+        let gameMode = 'bot'; // 'bot' или 'online'
+        let currentRoomId = null;
+        let isHost = false; // В онлайне: Хост считает физику шайбы
+        let roomRef = null;
+
+        // Логика игры
+        let gameLoopId;
+        let scores = { player: 0, opponent: 0 };
+        const WIN_SCORE = 3; 
+
+        // Размеры логического поля (canvas масштабируется CSS'ом)
+        const FIELD_W = 1000;
+        const FIELD_H = 600;
+
+        const puck = { x: 500, y: 300, vx: 0, vy: 0, radius: 20, speedMultiplier: 1.05 };
+        const player = { x: 150, y: 300, radius: 45, color: '#2196F3' };
+        const opponent = { x: 850, y: 300, radius: 45, color: '#f44336' };
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // --- 3. ЛОГИКА АВТОРИЗАЦИИ FIREBASE ---
+        const authScreen = document.getElementById('auth-screen');
+        const mainMenu = document.getElementById('main-menu');
+        const errBox = document.getElementById('auth-error');
+
+        document.getElementById('btn-login').addEventListener('click', () => {
+            const e = document.getElementById('email-input').value;
+            const p = document.getElementById('password-input').value;
+            signInWithEmailAndPassword(auth, e, p).catch(err => errBox.innerText = err.message);
+        });
+
+        document.getElementById('btn-register').addEventListener('click', () => {
+            const e = document.getElementById('email-input').value;
+            const p = document.getElementById('password-input').value;
+            createUserWithEmailAndPassword(auth, e, p)
+                .then((cred) => {
+                    // Создаем дефолтную запись в базе
+                    set(ref(db, 'users/' + cred.user.uid), {
+                        email: e.split('@')[0], // имя для лидерборда
+                        elo: 200,
+                        coins: 0
+                    });
+                })
+                .catch(err => errBox.innerText = err.message);
+        });
+
+        document.getElementById('btn-logout').addEventListener('click', () => signOut(auth));
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                authScreen.classList.add('hidden');
+                mainMenu.classList.remove('hidden');
+                document.getElementById('menu-email').innerText = user.email;
+                
+                // Слушаем данные пользователя из БД
+                onValue(ref(db, 'users/' + user.uid), (snapshot) => {
+                    if (snapshot.exists()) {
+                        const data = snapshot.val();
+                        playerData.elo = data.elo || 200;
+                        playerData.coins = data.coins || 0;
+                        updateMenuUI();
+                    }
+                });
+            } else {
+                currentUser = null;
+                authScreen.classList.remove('hidden');
+                mainMenu.classList.add('hidden');
+            }
+        });
+
+        function savePlayerData() {
+            if (currentUser) {
+                update(ref(db, 'users/' + currentUser.uid), {
+                    elo: playerData.elo,
+                    coins: playerData.coins
+                });
+            }
+        }
+
+        function updateMenuUI() {
+            document.getElementById('menu-elo').innerText = playerData.elo;
+            document.getElementById('menu-coins').innerText = playerData.coins;
+        }
+
+        // --- 4. UI ИНТЕРФЕЙС И СОБЫТИЯ ---
+        document.querySelectorAll('.char-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                document.querySelectorAll('.char-card').forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+                playerData.character = card.dataset.char;
+            });
+        });
+
+        document.getElementById('btn-play-bot').addEventListener('click', () => startGame('bot'));
+        document.getElementById('btn-to-menu').addEventListener('click', returnToMenu);
+        document.getElementById('btn-leaderboard').addEventListener('click', showLeaderboard);
+        document.getElementById('btn-close-lb').addEventListener('click', () => document.getElementById('leaderboard-screen').classList.add('hidden'));
+
+        // --- 5. ЛИДЕРБОРД FIREBASE ---
+        function showLeaderboard() {
+            document.getElementById('leaderboard-screen').classList.remove('hidden');
+            const lbList = document.getElementById('leaderboard-list');
+            lbList.innerHTML = '<li>Загрузка...</li>';
+            
+            get(ref(db, 'users')).then((snapshot) => {
+                if (snapshot.exists()) {
+                    let users = [];
+                    snapshot.forEach(child => {
+                        let u = child.val();
+                        users.push({ name: u.email || 'Игрок', elo: u.elo || 200 });
+                    });
+                    users.sort((a, b) => b.elo - a.elo);
+                    
+                    lbList.innerHTML = '';
+                    users.slice(0, 15).forEach((u, index) => { // Топ 15
+                        let isMe = (currentUser && u.name === currentUser.email.split('@')[0]) ? "<b>(Вы)</b>" : "";
+                        lbList.innerHTML += `<li>${index + 1}. ${u.name} ${isMe}: ${u.elo} ELO</li>`;
+                    });
+                } else {
+                    lbList.innerHTML = '<li>Пока нет игроков</li>';
+                }
+            });
+        }
+
+        // --- 6. ОНЛАЙН МУЛЬТИПЛЕЕР (МАТЧМЕЙКИНГ) ---
+        document.getElementById('btn-play-online').addEventListener('click', () => {
+            document.getElementById('main-menu').classList.add('hidden');
+            document.getElementById('matchmaking-screen').classList.remove('hidden');
+            
+            const queueRef = ref(db, 'matchmaking');
+            get(queueRef).then(snap => {
+                let foundMatch = false;
+                if (snap.exists()) {
+                    snap.forEach(child => {
+                        if (!foundMatch && child.key !== currentUser.uid) {
+                            foundMatch = true;
+                            currentRoomId = child.key + '_' + currentUser.uid;
+                            isHost = false;
+                            
+                            // Подключаемся к комнате хоста
+                            remove(ref(db, 'matchmaking/' + child.key)); 
+                            roomRef = ref(db, 'rooms/' + currentRoomId);
+                            set(roomRef, {
+                                p1: child.key,
+                                p2: currentUser.uid,
+                                p1_y: 300, p2_y: 300,
+                                puck_x: 500, puck_y: 300,
+                                status: 'playing'
+                            });
+                            
+                            onDisconnect(roomRef).remove();
+                            document.getElementById('matchmaking-screen').classList.add('hidden');
+                            startGame('online');
+                        }
+                    });
+                }
+                
+                if (!foundMatch) {
+                    // Создаем свою заявку
+                    isHost = true;
+                    set(ref(db, 'matchmaking/' + currentUser.uid), { elo: playerData.elo, timestamp: Date.now() });
+                    onDisconnect(ref(db, 'matchmaking/' + currentUser.uid)).remove();
+                    
+                    // Ждем пока кто-то создаст комнату с нашим ID
+                    const roomsRef = ref(db, 'rooms');
+                    onValue(roomsRef, (roomsSnap) => {
+                        if (document.getElementById('matchmaking-screen').classList.contains('hidden')) return; // Уже играем
+                        
+                        roomsSnap.forEach(r => {
+                            if (r.key.startsWith(currentUser.uid + '_')) {
+                                currentRoomId = r.key;
+                                roomRef = ref(db, 'rooms/' + currentRoomId);
+                                remove(ref(db, 'matchmaking/' + currentUser.uid));
+                                onDisconnect(roomRef).remove();
+                                document.getElementById('matchmaking-screen').classList.add('hidden');
+                                startGame('online');
+                            }
+                        });
+                    });
+                }
+            });
+        });
+
+        document.getElementById('btn-cancel-search').addEventListener('click', () => {
+            if (currentUser) remove(ref(db, 'matchmaking/' + currentUser.uid));
+            document.getElementById('matchmaking-screen').classList.add('hidden');
+            document.getElementById('main-menu').classList.remove('hidden');
+        });
+
+        // --- 7. ДВИЖОК И ФИЗИКА ИГРЫ ---
+        
+        // Управление мышью / касанием (учитывая масштабирование canvas CSS-ом)
+        function updatePlayerPosition(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            // Вычисляем реальные координаты относительно внутреннего разрешения (1000x600)
+            const scaleX = FIELD_W / rect.width;
+            const scaleY = FIELD_H / rect.height;
+            
+            player.x = (clientX - rect.left) * scaleX;
+            player.y = (clientY - rect.top) * scaleY;
+            
+            // Ограничения половины поля
+            if (player.x > (FIELD_W/2 - 10) - player.radius) player.x = (FIELD_W/2 - 10) - player.radius;
+            if (player.x < player.radius) player.x = player.radius;
+            if (player.y < player.radius) player.y = player.radius;
+            if (player.y > FIELD_H - player.radius) player.y = FIELD_H - player.radius;
+        }
+
+        window.addEventListener('mousemove', (e) => {
+            if(!document.getElementById('game-hud').classList.contains('hidden')) updatePlayerPosition(e.clientX, e.clientY);
+        });
+        window.addEventListener('touchmove', (e) => {
+            if(!document.getElementById('game-hud').classList.contains('hidden')) {
+                e.preventDefault();
+                updatePlayerPosition(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, {passive: false});
+
+        function resetPuck(scorer) {
+            puck.x = FIELD_W / 2;
+            puck.y = FIELD_H / 2;
+            puck.vx = scorer === 'player' ? -4 : 4;
+            puck.vy = (Math.random() - 0.5) * 5;
+        }
+
+        function updatePhysics() {
+            // Если онлайн и мы не хост — просто берем координаты из Firebase (отправка ниже)
+            if (gameMode === 'online' && !isHost) return;
+
+            // Движение шайбы
+            puck.x += puck.vx;
+            puck.y += puck.vy;
+
+            // Трение
+            puck.vx *= 0.99;
+            puck.vy *= 0.99;
+
+            // Отскок от стен (верх/низ)
+            if (puck.y < puck.radius || puck.y > FIELD_H - puck.radius) {
+                puck.vy = -puck.vy;
+                puck.y = puck.y < puck.radius ? puck.radius : FIELD_H - puck.radius;
+            }
+
+            // Ворота (по Y: от 200 до 400 при высоте 600)
+            const goalTop = FIELD_H / 2 - 100;
+            const goalBot = FIELD_H / 2 + 100;
+            const isGoalY = puck.y > goalTop && puck.y < goalBot;
+
+            if (puck.x < puck.radius) {
+                if (isGoalY) { scores.opponent++; checkWin(); resetPuck('opponent'); }
+                else { puck.vx = -puck.vx; puck.x = puck.radius; }
+            }
+            if (puck.x > FIELD_W - puck.radius) {
+                if (isGoalY) { scores.player++; checkWin(); resetPuck('player'); }
+                else { puck.vx = -puck.vx; puck.x = FIELD_W - puck.radius; }
+            }
+
+            // Коллизия
+            handleCollision(player);
+            handleCollision(opponent);
+
+            // Логика Бота (ЗАМЕДЛЕННЫЙ БОТ)
+            if (gameMode === 'bot') {
+                let botSpeed = 1.5; // СДЕЛАЛ БОТА ПОМЕДЛЕННЕЕ (было 3)
+                if (opponent.y < puck.y - 10) opponent.y += botSpeed;
+                if (opponent.y > puck.y + 10) opponent.y -= botSpeed;
+                
+                if (puck.x > FIELD_W / 2) {
+                    if (opponent.x > puck.x + 20) opponent.x -= botSpeed;
+                    if (opponent.x < puck.x - 20) opponent.x += botSpeed;
+                } else {
+                    if (opponent.x < FIELD_W - 150) opponent.x += botSpeed;
+                }
+            }
+        }
+
+        function handleCollision(paddle) {
+            let dx = puck.x - paddle.x;
+            let dy = puck.y - paddle.y;
+            let distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < puck.radius + paddle.radius) {
+                let angle = Math.atan2(dy, dx);
+                let speed = Math.sqrt(puck.vx * puck.vx + puck.vy * puck.vy);
+                speed = Math.max(speed, 6); // Минимальная сила
+                
+                puck.vx = Math.cos(angle) * speed * puck.speedMultiplier;
+                puck.vy = Math.sin(angle) * speed * puck.speedMultiplier;
+                
+                puck.x = paddle.x + Math.cos(angle) * (puck.radius + paddle.radius + 1);
+                puck.y = paddle.y + Math.sin(angle) * (puck.radius + paddle.radius + 1);
+            }
+        }
+
+        // Синхронизация для онлайна
+        let lastSync = 0;
+        function syncOnline() {
+            if (gameMode !== 'online' || !roomRef) return;
+            const now = Date.now();
+            
+            // Отправляем свои данные ~30 раз в секунду
+            if (now - lastSync > 30) {
+                lastSync = now;
+                if (isHost) {
+                    update(roomRef, { p1_y: player.y, p1_x: player.x, puck_x: puck.x, puck_y: puck.y, s1: scores.player, s2: scores.opponent });
+                } else {
+                    // Клиент отправляет свои координаты (отзеркаленные для хоста)
+                    update(roomRef, { p2_y: player.y, p2_x: FIELD_W - player.x });
+                }
+            }
+        }
+
+        // Отрисовка
+        function drawRoundImage(imgId, fallbackColor, x, y, radius) {
+            let img = document.getElementById(imgId);
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.closePath();
+            
+            if (img && img.complete && img.naturalHeight !== 0) {
+                ctx.save();
+                ctx.clip(); // ОБРЕЗКА В КРУГ
+                ctx.drawImage(img, x - radius, y - radius, radius * 2, radius * 2);
+                ctx.restore();
+                
+                // Рамка вокруг
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.strokeStyle = fallbackColor;
+                ctx.lineWidth = 4;
+                ctx.stroke();
+            } else {
+                ctx.fillStyle = fallbackColor;
+                ctx.fill();
+            }
+        }
+
+        function drawGame() {
+            ctx.clearRect(0, 0, FIELD_W, FIELD_H);
+            
+            // Лед и разметка
+            ctx.beginPath();
+            ctx.moveTo(FIELD_W / 2, 0);
+            ctx.lineTo(FIELD_W / 2, FIELD_H);
+            ctx.strokeStyle = '#2196F3';
+            ctx.lineWidth = 6;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(FIELD_W / 2, FIELD_H / 2, 80, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Ворота
+            ctx.fillStyle = '#ff5252';
+            ctx.fillRect(0, FIELD_H / 2 - 100, 15, 200);
+            ctx.fillStyle = '#4CAF50';
+            ctx.fillRect(FIELD_W - 15, FIELD_H / 2 - 100, 15, 200);
+
+            // Игрок 1 (Мы)
+            drawRoundImage('img-' + playerData.character, player.color, player.x, player.y, player.radius);
+
+            // Игрок 2 (Противник)
+            let oppImg = playerData.character === 'korzhik' ? 'img-kompot' : 'img-korzhik';
+            if (gameMode === 'online') oppImg = 'img-karamelka'; // В онлайне пусть будет Карамелька или дефолт
+            drawRoundImage(oppImg, opponent.color, opponent.x, opponent.y, opponent.radius);
+
+            // Шайба
+            drawRoundImage('img-puck', '#000', puck.x, puck.y, puck.radius);
+
+            document.getElementById('game-score').innerText = `${scores.player} - ${scores.opponent}`;
+        }
+
+        function loop() {
+            updatePhysics();
+            syncOnline();
+            drawGame();
+            gameLoopId = requestAnimationFrame(loop);
+        }
+
+        // --- 8. УПРАВЛЕНИЕ МАТЧЕМ ---
+        function startGame(mode) {
+            gameMode = mode;
+            scores = { player: 0, opponent: 0 };
+            resetPuck();
+            
+            document.getElementById('main-menu').classList.add('hidden');
+            document.getElementById('game-hud').classList.remove('hidden');
+            document.getElementById('game-score').classList.remove('hidden');
+            
+            document.getElementById('hud-elo').innerText = playerData.elo;
+            document.getElementById('hud-coins').innerText = playerData.coins;
+            document.getElementById('hud-mode').innerText = mode === 'bot' ? 'Оффлайн (Бот)' : 'Онлайн Игра';
+
+            // Если онлайн, слушаем базу данных
+            if (mode === 'online' && roomRef) {
+                onValue(roomRef, (snap) => {
+                    if (snap.exists()) {
+                        let data = snap.val();
+                        if (isHost) {
+                            opponent.y = data.p2_y || opponent.y;
+                            opponent.x = data.p2_x || opponent.x;
+                        } else {
+                            opponent.y = data.p1_y || opponent.y;
+                            opponent.x = FIELD_W - (data.p1_x || (FIELD_W - opponent.x));
+                            puck.x = FIELD_W - data.puck_x; // Зеркалим поле для клиента
+                            puck.y = data.puck_y;
+                            scores.player = data.s2 || 0;
+                            scores.opponent = data.s1 || 0;
+                        }
+                    } else {
+                        // Соперник отключился
+                        if(scores.player < WIN_SCORE && scores.opponent < WIN_SCORE) {
+                             alert("Соперник отключился!");
+                             endGame(true); // Авто-победа
+                        }
+                    }
+                });
+            }
+
+            loop();
+        }
+
+        // --- ВАША ТАБЛИЦА ELO ---
+        function calculateEloChange(currentElo, isWin, mode) {
+            const botTable = [
+                { max: 400, win: 30, loss: -5 }, { max: 700, win: 30, loss: -7 },
+                { max: 1500, win: 25, loss: -10 }, { max: 3000, win: 23, loss: -13 },
+                { max: 5000, win: 20, loss: -15 }, { max: 7000, win: 15, loss: -20 },
+                { max: Infinity, win: 10, loss: -25 }
+            ];
+            const onlineTable = [
+                { max: 400, win: 45, loss: -8 }, { max: 700, win: 45, loss: -11 },
+                { max: 1500, win: 38, loss: -15 }, { max: 3000, win: 35, loss: -20 },
+                { max: 5000, win: 30, loss: -23 }, { max: 7000, win: 23, loss: -30 },
+                { max: Infinity, win: 15, loss: -38 }
+            ];
+
+            const table = mode === 'bot' ? botTable : onlineTable;
+            for (let row of table) {
+                if (currentElo < row.max) return isWin ? row.win : row.loss;
+            }
+            return isWin ? 10 : -38;
+        }
+
+        function checkWin() {
+            if (scores.player >= WIN_SCORE || scores.opponent >= WIN_SCORE) {
+                cancelAnimationFrame(gameLoopId);
+                endGame(scores.player >= WIN_SCORE);
+            }
+        }
+
+        function endGame(isWin) {
+            document.getElementById('game-hud').classList.add('hidden');
+            document.getElementById('game-score').classList.add('hidden');
+            
+            if (gameMode === 'online' && roomRef) {
+                remove(roomRef); // Закрываем комнату
+                roomRef = null;
+            }
+
+            let eloChange = calculateEloChange(playerData.elo, isWin, gameMode);
+            playerData.elo += eloChange;
+            if (playerData.elo < 200) playerData.elo = 200; 
+            
+            let coinsEarned = isWin ? 25 : 5;
+            playerData.coins += coinsEarned;
+            
+            savePlayerData(); // Сохраняем в Firebase
+            updateMenuUI();
+
+            const overScreen = document.getElementById('game-over');
+            overScreen.classList.remove('hidden');
+            
+            document.getElementById('result-title').innerText = isWin ? 'Победа!' : 'Поражение...';
+            document.getElementById('result-title').style.color = isWin ? '#4CAF50' : '#f44336';
+            document.getElementById('result-elo-change').innerText = `ELO: ${eloChange > 0 ? '+' : ''}${eloChange}`;
+            document.getElementById('result-coins').innerText = `Монеты: +${coinsEarned}`;
+        }
+
+        function returnToMenu() {
+            document.getElementById('game-over').classList.add('hidden');
+            document.getElementById('main-menu').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
